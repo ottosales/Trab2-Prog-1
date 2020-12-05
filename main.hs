@@ -1,5 +1,5 @@
 import System.Random ( mkStdGen, Random(randomRs) )
-import Data.List as List (sort, elemIndex)
+import Data.List as List (delete, sort, elemIndex)
 import Data.Maybe as Maybe (fromMaybe)
 import Data.Text as Text (Text, pack, unpack, splitOn)
 import Text.Printf (printf)
@@ -12,7 +12,7 @@ main = do
     dataList <- readInput
     outputFileName <- readOutput
     folds <- readFolds
-    neighbours <- readNeighbours
+    knn <- readNeighbours
     seed <- readSeed
 
     -- generating random numbers, creating and spliting lists
@@ -21,23 +21,24 @@ main = do
 
     let oneNeighbour = classifyAllItemsCV dataList foldIndex
     let centroids = classifyAllCentroidsCV dataList foldIndex
-    -- let kNeighbours
+    let kNeighbours = classifyAllKNNCV dataList foldIndex (read knn)
 
-    print $ accuracyOneNeighbour dataList foldIndex (read folds)
-    print $ accuracyCentroids dataList foldIndex (read folds)
-    -- print $ accuracyKNeighbours dataList foldIndex (read folds)
+    printf "Acuracia(vizinho): %.2f%%\n" $ accuracyOneNeighbour dataList foldIndex (read folds)
+    printf "Acuracia(centroide): %.2f%%\n" $ accuracyCentroids dataList foldIndex (read folds)
+    printf "Acuracia(k-vizinhos): %.2f%%\n" $ accuracyKNN dataList foldIndex (read folds) (read knn)
 
     let confTableNeighbour = confusionTable oneNeighbour (getTestList dataList (concat foldIndex)) (getClassList dataList)
     let confTableCentroid = confusionTable centroids (getTestList dataList (concat foldIndex)) (getClassList dataList)
+    let confTableKN = confusionTable kNeighbours (getTestList dataList (concat foldIndex)) (getClassList dataList)
 
     -- printing confusion table to output file
     writeFile outputFileName ""
-    appendFile outputFileName "vizinho mais próximo:\n"
+    appendFile outputFileName "vizinho mais proximo:\n"
     appendFile outputFileName $ printConfTable confTableNeighbour
     appendFile outputFileName "\ncentroides:\n"
     appendFile outputFileName $ printConfTable confTableCentroid
-    -- appendFile outputFileName "\nk-vizinhos mais próximos:\n"
-    -- appendFile outputFileName $ printConfTable confTableKN
+    appendFile outputFileName "\nk-vizinhos mais proximos:\n"
+    appendFile outputFileName $ printConfTable confTableKN
 
     --all done :) end of main
 
@@ -127,6 +128,50 @@ guessClassPoint trainingGroup point = makeTuple (fst point) (snd (trainingGroup 
     where
         list = [calcDist x point | x <- trainingGroup]
 
+getKSmallestInList :: [Double] -> [([Double], String)] -> Int -> [(Double, ([Double], String))]
+getKSmallestInList _ _ 0 = []
+getKSmallestInList list trainingGroup k = makeTuple (minimum list) picked : getKSmallestInList (delete (minimum list) list) (delete picked trainingGroup) (k-1)
+    where
+        picked = trainingGroup !! Maybe.fromMaybe (-1) (elemIndex (minimum list) list)
+
+returnCountFromClass :: [(Double, ([Double], String))] -> String -> Int -> Int
+returnCountFromClass [] _ value = value
+returnCountFromClass (x:xs) className value =
+    if snd (snd x) == className then
+        returnCountFromClass xs className (succ value)
+        else returnCountFromClass xs className value
+
+-- get a list of all classes in a given list
+getClassListAux :: Ord a1 => [(a3, (a2, a1))] -> [a1]
+getClassListAux dataList = removeDup [snd (snd x) | x <- dataList]
+
+getAllClassesCount :: [(Double, ([Double], String))] -> [Int]
+getAllClassesCount kSmallestInList = [returnCountFromClass kSmallestInList x 0 | x <- getClassListAux kSmallestInList]
+
+calcMeanDistForClass :: [(Double, ([Double], String))] -> String -> Double -> Int -> Double
+calcMeanDistForClass [] _ value nOccurrences = value / fromIntegral nOccurrences
+calcMeanDistForClass (x:xs) className value nOccurrences =
+    if snd (snd x) == className then
+        calcMeanDistForClass xs className (value + fst x) nOccurrences
+        else calcMeanDistForClass xs className value nOccurrences
+
+resolveKNN :: [(Double, ([Double], String))] -> [String] -> [Int] -> String
+resolveKNN kSmallestInList classList countList = classList !! Maybe.fromMaybe (-1) (elemIndex (minimum meanList) meanList)
+    where
+        meanList = [calcMeanDistForClass kSmallestInList (classList !! x) 0 (countList !! x) | x <- [0..length classList - 1]]
+
+guessClassPointKNN :: [([Double], String)] -> ([Double], String) -> Int -> ([Double], String)
+guessClassPointKNN trainingGroup point k =
+    let kSmallestInList = getKSmallestInList [calcDist x point | x <- trainingGroup] trainingGroup k
+        classList = getClassListAux kSmallestInList
+        countList = getAllClassesCount kSmallestInList
+        in if length (filter (==maximum countList) countList) == 1 then
+            makeTuple (fst point) (classList !! Maybe.fromMaybe (-1) (elemIndex (maximum countList) countList))
+            else makeTuple (fst point) (resolveKNN kSmallestInList classList countList)
+
+classifyAllItemsKNN :: [([Double], String)] -> [([Double], String)] -> Int -> [([Double], String)]
+classifyAllItemsKNN trainingGroup testGroup k = [guessClassPointKNN trainingGroup x k | x <- testGroup]
+
 -- classifies all points of a given test group
 classifyAllItems :: [([Double], String)] -> [([Double], String)] -> [([Double], String)]
 classifyAllItems trainingGroup testGroup = [ guessClassPoint trainingGroup x | x <- testGroup]
@@ -135,8 +180,13 @@ classifyAllItems trainingGroup testGroup = [ guessClassPoint trainingGroup x | x
 classifyAllItemsCV :: [([Double], String)] -> [[Int]] -> [([Double], String)]
 classifyAllItemsCV dataList foldIndex = concat [classifyAllItems (getTrainingList dataList x) (getTestList dataList x) | x <- foldIndex]
 
+-- classifies all centroids using cross validation
 classifyAllCentroidsCV :: [([Double], String)] -> [[Int]] -> [([Double], String)]
 classifyAllCentroidsCV dataList foldIndex = concat [classifyAllItems (calcAllCentroids (getTrainingList dataList x)) (getTestList dataList x) | x <- foldIndex]
+
+-- classifies the K Nearest Neighbours using cross validation
+classifyAllKNNCV :: [([Double], String)] -> [[Int]] -> Int -> [([Double], String)]
+classifyAllKNNCV dataList foldIndex k = concat [classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k | x <- foldIndex]
 
 -- gets the test list
 getTestList :: [([Double], String)] -> [Int] -> [([Double], String)]
@@ -160,6 +210,9 @@ calcAccuracy right total = fromIntegral (100 * right) / fromIntegral total
 
 accuracyOneNeighbour :: [([Double], String)] -> [[Int]] -> Int -> Double
 accuracyOneNeighbour dataList foldIndex nFolds = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (getTrainingList dataList x) (getTestList dataList x)) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
+
+accuracyKNN :: [([Double], String)] -> [[Int]] -> Int -> Int -> Double
+accuracyKNN dataList foldIndex nFolds k = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
 
 -- gets all elements of a given class
 getAllElementsInClass :: [([Double], String)] -> String -> [[Double]]
