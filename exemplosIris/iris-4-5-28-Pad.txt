@@ -1,0 +1,38 @@
+========================= Interacao ============================================
+
+Forneca o nome do arquivo de entrada: iris.csv
+Forneca o nome do arquivo de saida: conf-iris-4-5-28.txt
+Forneca o numero de folds: 4
+Forneca o numero de vizinhos: 5
+Forneca o valor da semente para geracao randomizada: 28
+Acuracia(vizinho): 94.67%
+Desvio-Padrao(vizinho): 1.86%
+Acuracia(centroide): 86.63%
+Desvio-Padrao(centroide): 4.76%
+Acuracia(k-vizinhos): 94.67%
+Desvio-Padrao(k-vizinhos): 1.86%
+
+============= Indices de exemplos dos folds ====================================  
+
+[[65,3,24,51,135,117,69,79,82,148,108,78,62,137,107,84,36,33,143,129,126,134,123,97,31,9,64,35,43,93,128,6,2,144,29,103,1,19],[146,48,67,32,136,139,70,57,83,109,23,114,96,59,111,4,101,0,55,105,95,14,125,27,10,28,7,80,8,22,72,13,85,120,63,54,102,45],[94,66,44,53,25,92,110,98,131,15,40,49,30,124,73,75,113,118,21,90,38,61,42,41,115,127,5,12,81,89,71,133,142,47,87,106,34],[130,18,20,141,140,100,46,149,16,91,104,52,138,60,119,145,76,11,56,112,88,99,74,39,68,50,132,58,37,116,122,121,77,147,17,26,86]]
+
+
+============= Matrizes de confusao =============================================
+
+vizinho mais proximo:
+ 50,  0,  0
+  0, 46,  4
+  0,  4, 46
+
+centroides:
+ 50,  0,  0
+  0, 40, 10
+  0, 10, 40
+
+k-vizinhos mais próximos:
+ 50,  0,  0
+  0, 47,  5
+  0,  3, 45
+
+
+
