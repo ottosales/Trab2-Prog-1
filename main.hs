@@ -24,8 +24,11 @@ main = do
     let kNeighbours = classifyAllKNNCV dataList foldIndex (read knn)
 
     printf "Acuracia(vizinho): %.2f%%\n" $ accuracyOneNeighbour dataList foldIndex (read folds)
+    printf "Desvio-Padrao(vizinho): %.2f%%\n" $ stdDevOneN dataList foldIndex (read folds)
     printf "Acuracia(centroide): %.2f%%\n" $ accuracyCentroids dataList foldIndex (read folds)
+    printf "Desvio-Padrao(centroide): %.2f%%\n" $ stdDevCentroids dataList foldIndex (read folds)
     printf "Acuracia(k-vizinhos): %.2f%%\n" $ accuracyKNN dataList foldIndex (read folds) (read knn)
+    printf "Desvio-Padrao(k-vizinhos): %.2f%%\n" $ stdDevKNN dataList foldIndex (read folds) (read knn)
 
     let confTableNeighbour = confusionTable oneNeighbour (getTestList dataList (concat foldIndex)) (getClassList dataList)
     let confTableCentroid = confusionTable centroids (getTestList dataList (concat foldIndex)) (getClassList dataList)
@@ -211,6 +214,18 @@ calcAccuracy right total = fromIntegral (100 * right) / fromIntegral total
 accuracyOneNeighbour :: [([Double], String)] -> [[Int]] -> Int -> Double
 accuracyOneNeighbour dataList foldIndex nFolds = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (getTrainingList dataList x) (getTestList dataList x)) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
 
+stdDevOneN :: [([Double], String)] -> [[Int]] -> Int -> Double
+stdDevOneN dataList foldIndex nFolds = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
+    where
+        eachAccuracy = [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (getTrainingList dataList x) (getTestList dataList x)) 0) (length x) | x <- foldIndex]
+        mean = accuracyOneNeighbour dataList foldIndex nFolds
+
+stdDevKNN :: [([Double], String)] -> [[Int]] -> Int -> Int -> Double
+stdDevKNN dataList foldIndex nFolds k = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
+    where
+        eachAccuracy = [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k) 0) (length x) | x <- foldIndex]
+        mean = accuracyKNN dataList foldIndex nFolds k
+
 accuracyKNN :: [([Double], String)] -> [[Int]] -> Int -> Int -> Double
 accuracyKNN dataList foldIndex nFolds k = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
 
@@ -234,6 +249,12 @@ calcAllCentroids dataList = [makeTuple (map (/ fromIntegral (length (getAllEleme
 
 accuracyCentroids :: [([Double], String)] -> [[Int]] -> Int -> Double
 accuracyCentroids dataList foldIndex nFolds = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (calcAllCentroids (getTrainingList dataList x)) (getTestList dataList x)) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
+
+stdDevCentroids :: [([Double], String)] -> [[Int]] -> Int -> Double
+stdDevCentroids dataList foldIndex nFolds = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
+    where
+        eachAccuracy = [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (calcAllCentroids (getTrainingList dataList x)) (getTestList dataList x)) 0) (length x) | x <- foldIndex]
+        mean = accuracyCentroids dataList foldIndex nFolds
 
 -- informs the number of times the program guessed a class "guessedClass" and the right class was "rightClass", usefull with the function below
 calcGuesses :: [([Double], String)] -> [([Double], String)] -> String -> String -> Int -> Int
