@@ -1,5 +1,5 @@
 import System.Random ( mkStdGen, Random(randomRs) )
-import Data.List as List (delete, sort, elemIndex)
+import Data.List as List (transpose, delete, sort, elemIndex)
 import Data.Maybe as Maybe (fromMaybe)
 import Data.Text as Text (Text, pack, unpack, splitOn)
 import Text.Printf (printf)
@@ -23,16 +23,16 @@ main = do
     let centroids = classifyAllCentroidsCV dataList foldIndex
     let kNeighbours = classifyAllKNNCV dataList foldIndex (read knn)
 
-    printf "Acuracia(vizinho): %.2f%%\n" $ accuracyOneNeighbour dataList foldIndex (read folds)
-    printf "Desvio-Padrao(vizinho): %.2f%%\n" $ stdDevOneN dataList foldIndex (read folds)
-    printf "Acuracia(centroide): %.2f%%\n" $ accuracyCentroids dataList foldIndex (read folds)
-    printf "Desvio-Padrao(centroide): %.2f%%\n" $ stdDevCentroids dataList foldIndex (read folds)
-    printf "Acuracia(k-vizinhos): %.2f%%\n" $ accuracyKNN dataList foldIndex (read folds) (read knn)
-    printf "Desvio-Padrao(k-vizinhos): %.2f%%\n" $ stdDevKNN dataList foldIndex (read folds) (read knn)
+    printf "Acuracia(vizinho): %.2f%%\n" $ accWZScore dataList oneNeighbour foldIndex (read folds)
+    printf "Desvio-Padrao(vizinho): %.2f%%\n" $ stdDev dataList oneNeighbour foldIndex (read folds)
+    printf "Acuracia(centroide): %.2f%%\n" $ accWZScore dataList centroids foldIndex (read folds)
+    printf "Desvio-Padrao(centroide): %.2f%%\n" $ stdDev dataList centroids foldIndex (read folds)
+    printf "Acuracia(k-vizinhos): %.2f%%\n" $ accWZScore dataList kNeighbours foldIndex (read folds)
+    printf "Desvio-Padrao(k-vizinhos): %.2f%%\n" $ stdDev dataList kNeighbours foldIndex (read folds)
 
-    let confTableNeighbour = confusionTable oneNeighbour (getTestList dataList (concat foldIndex)) (getClassList dataList)
-    let confTableCentroid = confusionTable centroids (getTestList dataList (concat foldIndex)) (getClassList dataList)
-    let confTableKN = confusionTable kNeighbours (getTestList dataList (concat foldIndex)) (getClassList dataList)
+    let confTableNeighbour = confusionTable (concat oneNeighbour) (getTestList dataList (concat foldIndex)) (getClassList dataList)
+    let confTableCentroid = confusionTable (concat centroids) (getTestList dataList (concat foldIndex)) (getClassList dataList)
+    let confTableKN = confusionTable (concat kNeighbours) (getTestList dataList (concat foldIndex)) (getClassList dataList)
 
     -- printing confusion table to output file
     writeFile outputFileName ""
@@ -180,16 +180,25 @@ classifyAllItems :: [([Double], String)] -> [([Double], String)] -> [([Double], 
 classifyAllItems trainingGroup testGroup = [ guessClassPoint trainingGroup x | x <- testGroup]
 
 -- classifies all points using cross validation
-classifyAllItemsCV :: [([Double], String)] -> [[Int]] -> [([Double], String)]
-classifyAllItemsCV dataList foldIndex = concat [classifyAllItems (getTrainingList dataList x) (getTestList dataList x) | x <- foldIndex]
+classifyAllItemsCV :: [([Double], String)] -> [[Int]] -> [[([Double], String)]]
+classifyAllItemsCV dataList foldIndex = [classifyAllItems (zScoredTraining x) (zScoredTestList x) | x <- foldIndex]
+    where
+        zScoredTraining x = standardizeValues (getTrainingList dataList x) (applyZScore (getTrainingList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x))) 
+        zScoredTestList x = standardizeValues (getTestList dataList x) (applyZScore (getTestList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x)))
 
 -- classifies all centroids using cross validation
-classifyAllCentroidsCV :: [([Double], String)] -> [[Int]] -> [([Double], String)]
-classifyAllCentroidsCV dataList foldIndex = concat [classifyAllItems (calcAllCentroids (getTrainingList dataList x)) (getTestList dataList x) | x <- foldIndex]
+classifyAllCentroidsCV :: [([Double], String)] -> [[Int]] -> [[([Double], String)]]
+classifyAllCentroidsCV dataList foldIndex = [classifyAllItems (calcAllCentroids (zScoredTraining x)) (zScoredTestList x) | x <- foldIndex]
+    where
+        zScoredTraining x = standardizeValues (getTrainingList dataList x) (applyZScore (getTrainingList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x))) 
+        zScoredTestList x = standardizeValues (getTestList dataList x) (applyZScore (getTestList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x)))
 
 -- classifies the K Nearest Neighbours using cross validation
-classifyAllKNNCV :: [([Double], String)] -> [[Int]] -> Int -> [([Double], String)]
-classifyAllKNNCV dataList foldIndex k = concat [classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k | x <- foldIndex]
+classifyAllKNNCV :: [([Double], String)] -> [[Int]] -> Int -> [[([Double], String)]]
+classifyAllKNNCV dataList foldIndex k = [classifyAllItemsKNN (zScoredTraining x) (zScoredTestList x) k | x <- foldIndex]
+    where
+        zScoredTraining x = standardizeValues (getTrainingList dataList x) (applyZScore (getTrainingList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x))) 
+        zScoredTestList x = standardizeValues (getTestList dataList x) (applyZScore (getTestList dataList x) (calcMeanAndStdDevFromList (getTrainingList dataList x)))
 
 -- gets the test list
 getTestList :: [([Double], String)] -> [Int] -> [([Double], String)]
@@ -211,23 +220,17 @@ rightCount (x:xs) (y:ys) value =
 calcAccuracy :: Int -> Int -> Double
 calcAccuracy right total = fromIntegral (100 * right) / fromIntegral total
 
-accuracyOneNeighbour :: [([Double], String)] -> [[Int]] -> Int -> Double
-accuracyOneNeighbour dataList foldIndex nFolds = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (getTrainingList dataList x) (getTestList dataList x)) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
-
-stdDevOneN :: [([Double], String)] -> [[Int]] -> Int -> Double
-stdDevOneN dataList foldIndex nFolds = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
+accWZScore :: [([Double], String)] -> [[([Double], String)]] -> [[Int]] -> Int -> Double
+accWZScore dataList classifiedItems foldIndex nFolds = sum [calcAccuracy (rightCount (regularTestList x) (classifiedItems !! Maybe.fromMaybe (-1) (elemIndex x foldIndex)) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
     where
-        eachAccuracy = [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItems (getTrainingList dataList x) (getTestList dataList x)) 0) (length x) | x <- foldIndex]
-        mean = accuracyOneNeighbour dataList foldIndex nFolds
+        regularTestList x = getTestList dataList x 
 
-stdDevKNN :: [([Double], String)] -> [[Int]] -> Int -> Int -> Double
-stdDevKNN dataList foldIndex nFolds k = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
+stdDev :: [([Double], String)] -> [[([Double], String)]] -> [[Int]] -> Int -> Double
+stdDev dataList classifiedItems foldIndex nFolds = sqrt (sum [(x - mean)**2 | x <- eachAccuracy] / fromIntegral (length eachAccuracy))
     where
-        eachAccuracy = [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k) 0) (length x) | x <- foldIndex]
-        mean = accuracyKNN dataList foldIndex nFolds k
-
-accuracyKNN :: [([Double], String)] -> [[Int]] -> Int -> Int -> Double
-accuracyKNN dataList foldIndex nFolds k = sum [calcAccuracy (rightCount (getTestList dataList x) (classifyAllItemsKNN (getTrainingList dataList x) (getTestList dataList x) k) 0) (length x) | x <- foldIndex] / fromIntegral nFolds
+        eachAccuracy = [calcAccuracy (rightCount (regularTestList x) (classifiedItems !! Maybe.fromMaybe (-1) (elemIndex x foldIndex)) 0) (length x) | x <- foldIndex]
+        mean = accWZScore dataList classifiedItems foldIndex nFolds
+        regularTestList x = getTestList dataList x 
 
 -- gets all elements of a given class
 getAllElementsInClass :: [([Double], String)] -> String -> [[Double]]
@@ -283,3 +286,28 @@ createConfTableLine (x:xs) line = line ++ x ++ ", " ++ createConfTableLine xs li
 -- displays the confusion table
 printConfTable :: [[Int]] -> String
 printConfTable confTable = unlines [" " ++ createConfTableLine [fixNumberPosition x | x <- y] "" | y <- confTable]
+
+zscore :: Double -> Double -> Double -> Double
+zscore mean stdDev value = (value - mean) / stdDev
+
+calcMean :: [Double] -> Double
+calcMean list = sum list / fromIntegral (length list)
+
+calcStdDev :: [Double] -> Double -> Double
+calcStdDev list mean = sqrt (sum [(x - mean)**2 | x <- list] / fromIntegral (length list))
+
+transposeDataList :: [([Double], String)] -> [[Double]]
+transposeDataList dataList = transpose [fst x | x <- dataList]
+
+calcMeanAndStdDevFromList :: [([Double], String)] -> [(Double, Double)]
+calcMeanAndStdDevFromList dataList = [makeTuple (calcMean x) (calcStdDev x (calcMean x)) | x <- transposeDataList dataList]
+
+applyZScore :: [([Double], String)] -> [(Double, Double)] -> [[Double]]
+applyZScore dataList meanAndSD = [map (uncurry zscore (meanAndSD !! x)) (transposedDL !! x) | x <- [0..length transposedDL -1]]
+    where
+        transposedDL = transposeDataList dataList
+
+standardizeValues :: [([Double], String)] -> [[Double]] -> [([Double], String)]
+standardizeValues dataList transposedList = [makeTuple (untransposedList !! x) (snd (dataList !! x))| x <- [0..length dataList -1]]
+    where
+        untransposedList = transpose transposedList
